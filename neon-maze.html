@@ -432,3 +432,234 @@ function openQuizModal() {
 function handleAnswer(isCorrect) {
   document.getElementById('quiz-modal').style.display = 'none';
   isPaused = false;
+  player.totalAnswered++;
+
+  if (isCorrect) {
+    player.correct++;
+    document.getElementById('correct-count').innerText = player.correct;
+    resolveChestReward(activeChest);
+  } else {
+    showToast("Jawaban Salah! Peti tetap terkunci.");
+  }
+  activeChest = null;
+}
+
+function resolveChestReward(ch) {
+  ch.opened = true;
+  if (ch.content === 'key') {
+    player.keys++;
+    document.getElementById('key-count').innerText = player.keys;
+    showToast("Kunci Gerbang Ditemukan! (" + player.keys + "/3)");
+  } else if (ch.content === 'item') {
+    const types = ['glass', 'gun', 'banana', 'hat'];
+    const names = { glass: 'Kaca Pembesar', gun: 'Pistol', banana: 'Pisang', hat: 'Topi Cowboy' };
+    const picked = types[Math.floor(Math.random() * types.length)];
+    inventory[picked]++;
+    updateInventoryUI();
+    showToast("Mendapat Item: " + names[picked] + "!");
+  } else {
+    showToast("Peti Kosong! Tidak ada apa-apa di balik semak.");
+  }
+}
+
+function checkCollision(nx, ny, radius) {
+  const points = [
+    { x: nx - radius, y: ny - radius },
+    { x: nx + radius, y: ny - radius },
+    { x: nx - radius, y: ny + radius },
+    { x: nx + radius, y: ny + radius }
+  ];
+
+  for (let p of points) {
+    const c = Math.floor(p.x / TILE_SIZE);
+    const r = Math.floor(p.y / TILE_SIZE);
+    if (r < 0 || r >= ROWS || c < 0 || c >= COLS) return true;
+    if (map[r][c] === 1) return true;
+    if (map[r][c] === 2) {
+      if (player.keys >= 3) {
+        finishGame();
+        return false;
+      } else {
+        showToast("Gerbang Terkunci! Butuh 3 Kunci.");
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+function finishGame() {
+  if (gameOver) return;
+  gameOver = true;
+  const accuracy = player.totalAnswered > 0 ? (player.correct / player.totalAnswered) : 1;
+  const timeBonus = Math.max(0, 100 - Math.floor(elapsedTime * 0.5));
+  const finalScore = Math.min(100, Math.round((timeBonus * 0.5) + (accuracy * 50)));
+
+  document.getElementById('final-stats').innerHTML =
+    `Waktu Penyelesaian: <b>${elapsedTime} detik</b><br>` +
+    `Jawaban Benar: <b>${player.correct} dari ${player.totalAnswered} soal</b><br>` +
+    `Skor Akhir Detektif: <b style="color:#fbbf24; font-size:22px;">${finalScore} / 100</b>`;
+  document.getElementById('result-modal').style.display = 'block';
+}
+
+function update() {
+  if (isPaused || gameOver) return;
+
+  let dx = 0;
+  let dy = 0;
+  if (keysPressed['w'] || keysPressed['arrowup']) dy -= player.speed;
+  if (keysPressed['s'] || keysPressed['arrowdown']) dy += player.speed;
+  if (keysPressed['a'] || keysPressed['arrowleft']) dx -= player.speed;
+  if (keysPressed['d'] || keysPressed['arrowright']) dx += player.speed;
+
+  if (dx !== 0 && !checkCollision(player.x + dx, player.y, player.radius)) {
+    player.x += dx;
+  }
+  if (dy !== 0 && !checkCollision(player.x, player.y + dy, player.radius)) {
+    player.y += dy;
+  }
+
+  bot.x += (Math.sin(elapsedTime) * bot.speed);
+  if (bot.x < 75) bot.x = 75;
+  if (bot.x > 350) bot.x = 350;
+
+  for (let tw of tumbleweeds) {
+    tw.x += tw.vx;
+    tw.y += tw.vy;
+    tw.angle += 0.05;
+    if (tw.x > 920) {
+      tw.x = -20;
+      tw.y = Math.random() * 600;
+    }
+  }
+
+  sparkleTick += 0.08;
+}
+
+function draw3DBlock(x, y, size, topColor, sideColor) {
+  const depth = 10;
+  ctx.fillStyle = sideColor;
+  ctx.fillRect(x, y, size, size);
+  ctx.fillStyle = topColor;
+  ctx.fillRect(x, y - depth, size, size);
+}
+
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      const x = c * TILE_SIZE;
+      const y = r * TILE_SIZE;
+
+      ctx.fillStyle = (r + c) % 2 === 0 ? '#d4a359' : '#c99649';
+      ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
+
+      if (map[r][c] === 1) {
+        draw3DBlock(x, y, TILE_SIZE, '#4d7c0f', '#365314');
+      } else if (map[r][c] === 2) {
+        draw3DBlock(x, y, TILE_SIZE, player.keys >= 3 ? '#3b82f6' : '#f97316', '#1e3a8a');
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 11px sans-serif';
+        ctx.fillText('FINISH', x + 7, y + 22);
+      }
+    }
+  }
+
+  for (let ch of chests) {
+    const cx = ch.c * TILE_SIZE + TILE_SIZE / 2;
+    const cy = ch.r * TILE_SIZE + TILE_SIZE / 2;
+
+    draw3DBlock(ch.c * TILE_SIZE + 4, ch.r * TILE_SIZE + 4, TILE_SIZE - 8, '#65a30d', '#3f6212');
+
+    if (!ch.opened) {
+      const glow = Math.abs(Math.sin(sparkleTick)) * 12 + 4;
+      ctx.beginPath();
+      ctx.arc(cx, cy - 5, glow, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(251, 191, 36, 0.75)';
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.arc(cx, cy - 5, 4, 0, Math.PI * 2);
+      ctx.fillStyle = '#ffffff';
+      ctx.fill();
+
+      if (player.radarActive) {
+        const dist = Math.hypot(player.x - cx, player.y - cy);
+        const radarRadius = (player.radius * 2) * 2.5;
+        if (dist <= radarRadius) {
+          ctx.fillStyle = ch.content === 'key' ? '#22c55e' : '#ef4444';
+          ctx.font = 'bold 12px sans-serif';
+          ctx.fillText(ch.content === 'key' ? 'KUNCI!' : 'BUKAN', cx - 22, cy - 22);
+        }
+      }
+    }
+  }
+
+  if (player.radarActive) {
+    const radarRadius = (player.radius * 2) * 2.5;
+    ctx.beginPath();
+    ctx.arc(player.x, player.y, radarRadius, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(59, 130, 246, 0.8)';
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(59, 130, 246, 0.15)';
+    ctx.fill();
+  }
+
+  ctx.fillStyle = 'rgba(0,0,0,0.3)';
+  ctx.beginPath();
+  ctx.ellipse(bot.x, bot.y + 8, bot.radius, bot.radius * 0.6, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#ef4444';
+  ctx.beginPath();
+  ctx.arc(bot.x, bot.y - 4, bot.radius, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = 'rgba(0,0,0,0.35)';
+  ctx.beginPath();
+  ctx.ellipse(player.x, player.y + 8, player.radius, player.radius * 0.6, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = '#7c3aed';
+  ctx.beginPath();
+  ctx.arc(player.x, player.y - 4, player.radius, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = '#451a03';
+  ctx.beginPath();
+  ctx.ellipse(player.x, player.y - 10, player.radius + 5, 6, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#78350f';
+  ctx.beginPath();
+  ctx.arc(player.x, player.y - 12, player.radius - 3, 0, Math.PI * 2);
+  ctx.fill();
+
+  for (let tw of tumbleweeds) {
+    ctx.save();
+    ctx.translate(tw.x, tw.y);
+    ctx.rotate(tw.angle);
+    ctx.strokeStyle = '#78350f';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(0, 0, tw.size, 0, Math.PI * 2);
+    ctx.moveTo(-tw.size, 0);
+    ctx.lineTo(tw.size, 0);
+    ctx.moveTo(0, -tw.size);
+    ctx.lineTo(0, tw.size);
+    ctx.stroke();
+    ctx.restore();
+  }
+}
+
+function loop() {
+  update();
+  draw();
+  requestAnimationFrame(loop);
+}
+
+updateInventoryUI();
+loop();
+</script>
+</body>
+</html>
