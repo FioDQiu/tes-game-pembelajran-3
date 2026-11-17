@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Detective Prairie Maze</title>
+<style>
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  }
+  body {
+    background-color: #120d1d;
+    color: #ffffff;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+  #hud {
+    width: 900px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: linear-gradient(90deg, #2a1744, #1b2845);
+    padding: 12px 20px;
+    border-radius: 12px 12px 0 0;
+    border: 2px solid #7c3aed;
+    border-bottom: none;
+  }
+  .stat-box {
+    display: flex;
+    gap: 20px;
+    font-weight: bold;
+    font-size: 16px;
+  }
+  .stat-item span {
+    color: #fbbf24;
+  }
+  #inventory {
+    display: flex;
+    gap: 10px;
+  }
+  .inv-slot {
+    background: #1e1b2e;
+    border: 2px solid #f97316;
+    color: #fff;
+    padding: 6px 12px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: bold;
+    transition: 0.2s;
+  }
+  .inv-slot:hover:not(:disabled) {
+    background: #f97316;
+    color: #120d1d;
+  }
+  .inv-slot:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    border-color: #4b5563;
+  }
+  #game-container {
+    position: relative;
+    width: 900px;
+    height: 600px;
+    border: 2px solid #7c3aed;
+    border-radius: 0 0 12px 12px;
+    overflow: hidden;
+    box-shadow: 0 10px 30px rgba(124, 58, 237, 0.4);
+  }
+  canvas {
+    display: block;
+    background-color: #c29b61;
+  }
+  #blind-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: radial-gradient(circle, transparent 60px, rgba(0, 0, 0, 0.96) 140px);
+    pointer-events: none;
+    display: none;
+    z-index: 5;
+  }
+  #quiz-modal, #result-modal {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: #1e1433;
+    border: 3px solid #fbbf24;
+    border-radius: 16px;
+    padding: 25px;
+    width: 450px;
+    z-index: 10;
+    display: none;
+    box-shadow: 0 0 40px rgba(0, 0, 0, 0.85);
+  }
+  #quiz-modal h3, #result-modal h2 {
+    color: #fbbf24;
+    margin-bottom: 15px;
+    text-align: center;
+  }
+  #question-text {
+    font-size: 16px;
+    margin-bottom: 20px;
+    line-height: 1.5;
+    text-align: center;
+  }
+  .option-btn {
+    display: block;
+    width: 100%;
+    padding: 12px;
+    margin-bottom: 10px;
+    background: #2e1d52;
+    border: 2px solid #3b82f6;
+    color: #ffffff;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 15px;
+    font-weight: bold;
+    text-align: left;
+    transition: 0.2s;
+  }
+  .option-btn:hover {
+    background: #3b82f6;
+  }
+  #toast {
+    position: absolute;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(18, 13, 29, 0.9);
+    border: 2px solid #f97316;
+    color: #fbbf24;
+    padding: 10px 24px;
+    border-radius: 20px;
+    font-weight: bold;
+    z-index: 8;
+    display: none;
+  }
+  .controls-hint {
+    margin-top: 10px;
+    font-size: 13px;
+    color: #a78bfa;
+  }
+  .btn-restart {
+    width: 100%;
+    padding: 12px;
+    background: #f97316;
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    font-size: 16px;
+    font-weight: bold;
+    cursor: pointer;
+    margin-top: 15px;
+  }
+</style>
+</head>
+<body>
+
+<div id="hud">
+  <div class="stat-box">
+    <div class="stat-item">Kunci: <span id="key-count">0</span> / 3</div>
+    <div class="stat-item">Waktu: <span id="timer">0</span>s</div>
+    <div class="stat-item">Benar: <span id="correct-count">0</span></div>
+  </div>
+  <div id="inventory">
+    <button class="inv-slot" id="btn-glass" onclick="useItem('glass')" disabled>[1] Kaca Pembesar (0)</button>
+    <button class="inv-slot" id="btn-gun" onclick="useItem('gun')" disabled>[2] Pistol (0)</button>
+    <button class="inv-slot" id="btn-banana" onclick="useItem('banana')" disabled>[3] Pisang (0)</button>
+    <button class="inv-slot" id="btn-hat" onclick="useItem('hat')" disabled>[4] Topi Cowboy (0)</button>
+  </div>
+</div>
+
+<div id="game-container">
+  <canvas id="gameCanvas" width="900" height="600"></canvas>
+  <div id="blind-overlay"></div>
+  <div id="toast"></div>
+
+  <div id="quiz-modal">
+    <h3>INVESTIGASI PETI</h3>
+    <p id="question-text"></p>
+    <div id="options-container"></div>
+  </div>
+
+  <div id="result-modal">
+    <h2>KASUS SELESAI</h2>
+    <p id="final-stats" style="text-align:center; line-height:1.8; font-size:16px;"></p>
+    <button class="btn-restart" onclick="location.reload()">Main Lagi</button>
+  </div>
+</div>
+
+<div class="controls-hint">
+  Gunakan WASD atau Panah untuk bergerak | Tekan SPASI di dekat kilauan semak untuk membuka peti | Tekan 1-4 untuk memakai Item
+</div>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+const TILE_SIZE = 50;
+const ROWS = 12;
+const COLS = 18;
+
+const map = [
+  [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+  [1,0,0,0,1,0,0,0,0,0,1,0,0,0,0,0,0,1],
+  [1,0,1,0,1,0,1,1,1,0,1,0,1,1,1,1,0,1],
+  [1,0,1,0,0,0,0,0,1,0,0,0,1,0,0,0,0,1],
+  [1,0,1,1,1,1,1,0,1,1,1,0,1,0,1,1,1,1],
+  [1,0,0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,1],
+  [1,1,1,1,1,0,1,1,1,1,1,1,1,0,1,0,1,1],
+  [1,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0,0,1],
+  [1,0,1,0,1,1,1,1,1,0,1,0,1,1,1,1,0,1],
+  [1,0,1,0,0,0,0,0,1,0,1,0,0,0,0,1,0,1],
+  [1,0,0,0,1,1,1,0,0,0,1,1,1,1,0,0,2,1],
+  [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
+];
+
+const questions = [
+  { q: "Ibu kota negara Indonesia yang baru adalah...", a: ["Nusantara", "Surabaya", "Bandung", "Medan"], c: 0 },
+  { q: "Hasil dari 15 x 4 + 10 adalah...", a: ["60", "70", "80", "90"], c: 1 },
+  { q: "Planet terdekat dengan matahari adalah...", a: ["Venus", "Mars", "Merkurius", "Bumi"], c: 2 },
+  { q: "Zat hijau daun yang membantu fotosintesis disebut...", a: ["Stomata", "Klorofil", "Xilem", "Floem"], c: 1 },
+  { q: "Proklamasi kemerdekaan Indonesia dibacakan pada tahun...", a: ["1942", "1944", "1945", "1949"], c: 2 },
+  { q: "Alat pernapasan utama pada ikan adalah...", a: ["Paru-paru", "Trakea", "Kulit", "Insang"], c: 3 },
+  { q: "Sudut siku-siku memiliki besar derajat sebesar...", a: ["45 derajat", "90 derajat", "180 derajat", "360 derajat"], c: 1 },
+  { q: "Simbol kimia untuk unsur Emas adalah...", a: ["Ag", "Fe", "Au", "Cu"], c: 2 }
+];
+
+let player = {
+  x: 75,
+  y: 75,
+  radius: 14,
+  baseSpeed: 3.2,
+  speed: 3.2,
+  keys: 0,
+  correct: 0,
+  totalAnswered: 0,
+  radarActive: false
+};
+
+let bot = {
+  x: 75,
+  y: 525,
+  radius: 14,
+  baseSpeed: 2.2,
+  speed: 2.2,
+  slowTimer: 0,
+  targetX: 225,
+  targetY: 525
+};
+
+let inventory = {
+  glass: 1,
+  gun: 1,
+  banana: 1,
+  hat: 1
+};
+
+let chests = [
+  { c: 3, r: 1, opened: false, content: 'key' },
+  { c: 9, r: 1, opened: false, content: 'item' },
+  { c: 16, r: 1, opened: false, content: 'empty' },
+  { c: 5, r: 3, opened: false, content: 'key' },
+  { c: 13, r: 3, opened: false, content: 'item' },
+  { c: 1, r: 5, opened: false, content: 'empty' },
+  { c: 11, r: 5, opened: false, content: 'key' },
+  { c: 15, r: 5, opened: false, content: 'item' },
+  { c: 3, r: 7, opened: false, content: 'item' },
+  { c: 11, r: 7, opened: false, content: 'empty' },
+  { c: 16, r: 7, opened: false, content: 'key' },
+  { c: 7, r: 9, opened: false, content: 'item' },
+  { c: 14, r: 9, opened: false, content: 'key' }
+];
+
+let tumbleweeds = [];
+for (let i = 0; i < 6; i++) {
+  tumbleweeds.push({
+    x: Math.random() * 900,
+    y: Math.random() * 600,
+    vx: 1.5 + Math.random() * 1.5,
+    vy: (Math.random() - 0.5) * 0.8,
+    angle: 0,
+    size: 12 + Math.random() * 8
+  });
+}
+
+let keysPressed = {};
+let activeChest = null;
+let isPaused = false;
+let elapsedTime = 0;
+let gameOver = false;
+let sparkleTick = 0;
+
+window.addEventListener('keydown', e => {
+  keysPressed[e.key.toLowerCase()] = true;
+  if (e.code === 'Space' && !isPaused && !gameOver) {
+    interactChest();
+  }
+  if (!isPaused && !gameOver) {
+    if (e.key === '1') useItem('glass');
+    if (e.key === '2') useItem('gun');
+    if (e.key === '3') useItem('banana');
+    if (e.key === '4') useItem('hat');
+  }
+});
+
+window.addEventListener('keyup', e => {
+  keysPressed[e.key.toLowerCase()] = false;
+});
+
+setInterval(() => {
+  if (!isPaused && !gameOver) {
+    elapsedTime++;
+    document.getElementById('timer').innerText = elapsedTime;
+  }
+}, 1000);
+
+function showToast(msg) {
+  const toast = document.getElementById('toast');
+  toast.innerText = msg;
+  toast.style.display = 'block';
+  setTimeout(() => {
+    toast.style.display = 'none';
+  }, 2500);
+}
+
+function updateInventoryUI() {
+  document.getElementById('btn-glass').innerText = `[1] Kaca Pembesar (${inventory.glass})`;
+  document.getElementById('btn-glass').disabled = inventory.glass <= 0;
+
+  document.getElementById('btn-gun').innerText = `[2] Pistol (${inventory.gun})`;
+  document.getElementById('btn-gun').disabled = inventory.gun <= 0;
+
+  document.getElementById('btn-banana').innerText = `[3] Pisang (${inventory.banana})`;
+  document.getElementById('btn-banana').disabled = inventory.banana <= 0;
+
+  document.getElementById('btn-hat').innerText = `[4] Topi Cowboy (${inventory.hat})`;
+  document.getElementById('btn-hat').disabled = inventory.hat <= 0;
+}
+
+function useItem(type) {
+  if (inventory[type] <= 0) return;
+
+  if (type === 'glass') {
+    inventory.glass--;
+    player.radarActive = true;
+    showToast("Kaca Pembesar Aktif: Mendeteksi kunci dalam radius 2.5x!");
+    setTimeout(() => {
+      player.radarActive = false;
+    }, 6000);
+  } else if (type === 'gun') {
+    const nearest = getNearestChest(65);
+    if (!nearest) {
+      showToast("Dekati peti berkilau untuk menembaknya!");
+      return;
+    }
+    inventory.gun--;
+    showToast("DOR! Peti terbuka tanpa soal!");
+    resolveChestReward(nearest);
+  } else if (type === 'banana') {
+    inventory.banana--;
+    bot.speed = bot.baseSpeed * 0.4;
+    showToast("Pisang dilempar! Lawan melambat selama 5 detik!");
+    setTimeout(() => {
+      bot.speed = bot.baseSpeed;
+    }, 5000);
+  } else if (type === 'hat') {
+    inventory.hat--;
+    const overlay = document.getElementById('blind-overlay');
+    overlay.style.display = 'block';
+    showToast("Topi Cowboy Aktif! Pandangan menggelap 5 detik!");
+    setTimeout(() => {
+      overlay.style.display = 'none';
+    }, 5000);
+  }
+  updateInventoryUI();
+}
+
+function getNearestChest(maxDist) {
+  let found = null;
+  let minD = maxDist;
+  for (let ch of chests) {
+    if (!ch.opened) {
+      const cx = ch.c * TILE_SIZE + TILE_SIZE / 2;
+      const cy = ch.r * TILE_SIZE + TILE_SIZE / 2;
+      const d = Math.hypot(player.x - cx, player.y - cy);
+      if (d < minD) {
+        minD = d;
+        found = ch;
+      }
+    }
+  }
+  return found;
+}
+
+function interactChest() {
+  const ch = getNearestChest(55);
+  if (!ch) return;
+  activeChest = ch;
+  isPaused = true;
+  openQuizModal();
+}
+
+function openQuizModal() {
+  const qObj = questions[Math.floor(Math.random() * questions.length)];
+  document.getElementById('question-text').innerText = qObj.q;
+  const optContainer = document.getElementById('options-container');
+  optContainer.innerHTML = '';
+
+  qObj.a.forEach((opt, idx) => {
+    const btn = document.createElement('button');
+    btn.className = 'option-btn';
+    btn.innerText = opt;
+    btn.onclick = () => handleAnswer(idx === qObj.c);
+    optContainer.appendChild(btn);
+  });
+
+  document.getElementById('quiz-modal').style.display = 'block';
+}
+
+function handleAnswer(isCorrect) {
+  document.getElementById('quiz-modal').style.display = 'none';
+  isPaused = false;
